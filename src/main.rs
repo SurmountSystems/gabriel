@@ -6,6 +6,7 @@ use bitcoin::{
     block::Version, consensus::deserialize, Block, BlockHash, CompactTarget, TxMerkleNode,
 };
 use chrono::{TimeZone, Utc};
+use indicatif::ProgressBar;
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 
@@ -107,15 +108,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .danger_accept_invalid_certs(true)
         .build()?;
 
-    let mut p2pk_addresses = 0;
-    let mut p2pk_coins = 0;
+    let mut p2pk_addresses: i32 = 0;
+    let mut p2pk_coins: f64 = 0.0;
 
-    for i in 1..1000 {
+    let url = format!("https://{onion}.local/api/blocks/tip/height");
+    let response = client.get(url).send()?.text()?;
+    let height = response.parse()?;
+
+    let pb = ProgressBar::new(height);
+
+    pb.println(format!("Syncing from blocks 1 to {height}"));
+
+    for i in 1..height {
         let url = format!("https://{onion}.local/api/block-height/{i}");
-        println!("{}", url);
+        pb.println(&url);
         let hash = client.get(url).send()?.text()?;
         let url = format!("https://{onion}.local/api/block/{hash}");
-        println!("{}", url);
+        pb.println(&url);
         let response = client.get(url).send()?.text()?;
         let json: Header = serde_json::from_str(&response)?;
         // println!("{}", serde_json::to_string_pretty(&json)?);
@@ -128,18 +137,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let out_script = outpoint.script_pubkey.to_asm_string();
                 if out_script.starts_with("OP_PUSHBYTES_65") {
                     p2pk_addresses += 1;
+                    p2pk_coins += outpoint.value.to_btc();
                 }
             }
-
-            println!("tx len: {}", tx.input.len());
 
             if i > 1 {
                 for txin in &tx.input {
                     let txid = txin.previous_output.txid;
                     let url = format!("https://{onion}.local/api/tx/{txid}");
-                    println!("{}", url);
+                    pb.println(&url);
                     let response = client.get(url).send()?.text()?;
-                    println!("{}", response);
+                    pb.println(&response);
                     let transaction: Transaction = serde_json::from_str(&response)?;
 
                     for vin in transaction.vin {
@@ -152,6 +160,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let out_script = outpoint.scriptpubkey_asm;
                         if out_script.starts_with("OP_PUSHBYTES_65") {
                             p2pk_addresses -= 1;
+                            p2pk_coins -= (outpoint.value as f64) / 100_000_000.0;
                         }
                     }
                 }
