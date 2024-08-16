@@ -2,10 +2,9 @@ use std::env;
 use std::fs::File;
 use std::io::Write;
 
-use bitcoin::consensus::deserialize;
-use bitcoin::hex::FromHex;
-use bitcoin::Transaction;
-use bitcoin::{block::Version, Block, BlockHash, CompactTarget, TxMerkleNode};
+use bitcoin::{
+    block::Version, consensus::deserialize, Block, BlockHash, CompactTarget, TxMerkleNode,
+};
 use chrono::{TimeZone, Utc};
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
@@ -40,6 +39,64 @@ impl Header {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Transaction {
+    pub vsize: u32,
+    #[serde(rename = "feePerVsize")]
+    pub fee_per_vsize: f64,
+    #[serde(rename = "effectiveFeePerVsize")]
+    pub effective_fee_per_vsize: f64,
+    pub txid: String,
+    pub version: u32,
+    pub locktime: u32,
+    pub size: u32,
+    pub weight: u32,
+    pub fee: u64,
+    pub vin: Vec<Vin>,
+    pub vout: Vec<Vout>,
+    pub status: Status,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Vin {
+    pub is_coinbase: bool,
+    pub prevout: Option<Prevout>,
+    pub scriptsig: String,
+    pub scriptsig_asm: String,
+    pub sequence: u32,
+    pub txid: String,
+    pub vout: u32,
+    pub witness: Vec<String>,
+    pub inner_redeemscript_asm: String,
+    pub inner_witnessscript_asm: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Prevout {
+    pub value: u64,
+    pub scriptpubkey: String,
+    pub scriptpubkey_address: String,
+    pub scriptpubkey_asm: String,
+    pub scriptpubkey_type: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Vout {
+    pub value: u64,
+    pub scriptpubkey: String,
+    pub scriptpubkey_address: String,
+    pub scriptpubkey_asm: String,
+    pub scriptpubkey_type: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Status {
+    pub confirmed: bool,
+    pub block_height: u64,
+    pub block_hash: String,
+    pub block_time: u64,
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut out: Vec<String> = vec![];
     out.push("Date,Total P2PK addresses,Total P2PK coins".to_owned());
@@ -53,7 +110,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut p2pk_addresses = 0;
     let mut p2pk_coins = 0;
 
-    for i in 540..1000 {
+    for i in 1..1000 {
         let url = format!("https://{onion}.local/api/block-height/{i}");
         println!("{}", url);
         let hash = client.get(url).send()?.text()?;
@@ -78,22 +135,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             if i > 1 {
                 for txin in &tx.input {
-                    if !tx.is_coinbase() {
-                        let txid = txin.previous_output.txid;
-                        let url = format!("https://{onion}.local/api/tx/{txid}/raw");
-                        let response = client.get(url).send()?.bytes()?;
-                        println!("res len: {}", response.len());
-                        const SOME_TX: &str = "0100000001a15d57094aa7a21a28cb20b59aab8fc7d1149a3bdbcddba9c622e4f5f6a99ece010000006c493046022100f93bb0e7d8db7bd46e40132d1f8242026e045f03a0efe71bbb8e3f475e970d790221009337cd7f1f929f00cc6ff01f03729b069a7c21b59b1736ddfee5db5946c5da8c0121033b9b137ee87d5a812d6f506efdd37f0affa7ffc310711c06c7f3e097c9447c52ffffffff0100e1f505000000001976a9140389035a9225b3839e2bbf32d826a1e222031fd888ac00000000";
-                        let raw_tx = Vec::from_hex(SOME_TX).unwrap();
-                        println!("hex: {}", hex::encode(&response));
-                        println!("real len: {}", &response.len());
-                        println!("test len: {}", &raw_tx.len());
-                        let transaction: Transaction = deserialize(&response)?;
-                        for outpoint in transaction.output {
-                            let out_script = outpoint.script_pubkey.to_asm_string();
-                            if out_script.starts_with("OP_PUSHBYTES_65") {
-                                p2pk_addresses -= 1;
-                            }
+                    let txid = txin.previous_output.txid;
+                    let url = format!("https://{onion}.local/api/tx/{txid}");
+                    println!("{}", url);
+                    let response = client.get(url).send()?.text()?;
+                    println!("{}", response);
+                    let transaction: Transaction = serde_json::from_str(&response)?;
+
+                    for vin in transaction.vin {
+                        if vin.is_coinbase {
+                            continue;
+                        }
+                    }
+
+                    for outpoint in transaction.vout {
+                        let out_script = outpoint.scriptpubkey_asm;
+                        if out_script.starts_with("OP_PUSHBYTES_65") {
+                            p2pk_addresses -= 1;
                         }
                     }
                 }
