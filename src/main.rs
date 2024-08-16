@@ -173,6 +173,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             p2pk_addresses,
             p2pk_coins
         ));
+
+        pb.inc(1);
     }
 
     let content = out.join("\n");
