@@ -43,15 +43,41 @@ fn main() -> Result<()> {
 
     out = content.lines().map(|line| line.to_string()).collect();
 
-    // Get the last line of the CSV file and set it as the resume height, parsing the height from the date
-    let last_line = lines.last().unwrap().split(",").collect::<Vec<&str>>();
-    let resume_height: &&str = last_line.first().unwrap_or(&"1");
-
-    // If the file is empty, set the resume height to 1
-    let resume_height = if resume_height.contains("") {
-        1
+    // Get the last line of the CSV file and parse the height from it
+    let resume_height = if let Some(last_line) = out.last() {
+        let fields: Vec<&str> = last_line.split(',').collect();
+        if let Some(height_str) = fields.first() {
+            height_str.parse::<u64>().unwrap_or(1)
+        } else {
+            1
+        }
     } else {
-        resume_height.parse::<u64>()?
+        1
+    };
+
+    // If the file only contains the header, set the resume height to 1
+    let resume_height = if resume_height == 0 { 1 } else { resume_height };
+
+    // Get the last line of the CSV file and parse the P2PK addresses and coins from it
+    let mut p2pk_addresses: i32 = if let Some(last_line) = out.last() {
+        let fields: Vec<&str> = last_line.split(',').collect();
+        if fields.len() >= 3 {
+            fields[2].parse().unwrap_or(0)
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+    let mut p2pk_coins: f64 = if let Some(last_line) = out.last() {
+        let fields: Vec<&str> = last_line.split(',').collect();
+        if fields.len() >= 4 {
+            fields[3].parse().unwrap_or(0.0)
+        } else {
+            0.0
+        }
+    } else {
+        0.0
     };
 
     // RPC connection
@@ -68,10 +94,6 @@ fn main() -> Result<()> {
     };
     let rpc = Client::new(&url, auth)?;
 
-    // Results
-    let mut p2pk_addresses: i32 = 0;
-    let mut p2pk_coins: f64 = 0.0;
-
     // Get chain height from chain tip
     let result = rpc.get_chain_tips()?;
     let tip_height = result
@@ -84,6 +106,7 @@ fn main() -> Result<()> {
 
     // Progress bar
     let pb = ProgressBar::new(tip_height);
+    pb.inc(resume_height - 1);
     pb.println(format!(
         "Syncing from blocks {resume_height} to {tip_height}"
     ));
@@ -144,10 +167,12 @@ fn main() -> Result<()> {
 
         pb.println(format!("Block: {height} - ETA: {eta_hms}"));
 
-        // Write the new content to the file
-        let content = out.join("\n");
-        let mut file = File::create("out.csv")?;
-        file.write_all(content.as_bytes())?;
+        // Write the new content to the file for every 2 weeks worth of blocks
+        if height % 2016 == 0 {
+            let content = out.join("\n");
+            let mut file = File::create("out.csv")?;
+            file.write_all(content.as_bytes())?;
+        }
 
         pb.inc(1);
     }
