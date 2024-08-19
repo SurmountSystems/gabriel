@@ -11,11 +11,9 @@ bitcoin = { version = "0.32.2", features = ["serde"] }
 chrono = "0.4.38"
 hex = "0.4.3"
 indicatif = "0.17.8"
-# reqwest = { version = "0.12.5", features = ["blocking"] }
 bitcoincore-rpc = "0.19.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-# tokio = { version = "1", features = ["full"] }
 
 # # [patch.crates-io.bitcoin-addresses]
 # # path = "../rust-bitcoin/addresses"

@@ -90,7 +90,7 @@ fn main() -> Result<()> {
         let eta_duration = pb.eta();
         let eta_datetime =
             Utc::now() + Duration::from_std(eta_duration).unwrap_or_else(|_| Duration::seconds(0));
-        let eta_hms = eta_datetime.format("%H:%M:%S").to_string();
+        let eta_hms = eta_datetime.format("%d:%H:%M:%S").to_string();
 
         pb.println(format!("Block: {height} - ETA: {eta_hms}"));
     }
