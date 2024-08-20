@@ -9,7 +9,7 @@ use bitcoincore_rpc::{
     json::{GetChainTipsResultStatus, GetChainTipsResultTip},
     Auth, Client, RpcApi,
 };
-use chrono::{Duration, TimeZone, Utc};
+use chrono::{TimeZone, Utc};
 use indicatif::ProgressBar;
 
 const HEADER: &str = "Height,Date,Total P2PK addresses,Total P2PK coins";
@@ -122,6 +122,8 @@ fn main() -> Result<()> {
                 if outpoint.script_pubkey.is_p2pk() {
                     p2pk_addresses += 1;
                     p2pk_coins += outpoint.value.to_btc();
+                } else {
+                    continue;
                 }
             }
 
@@ -130,6 +132,8 @@ fn main() -> Result<()> {
                 for txin in &tx.input {
                     let txid = txin.previous_output.txid;
                     let transaction = rpc.get_raw_transaction(&txid, None)?;
+
+                    pb.println(format!("{:?}", transaction));
 
                     if transaction.is_coinbase() {
                         continue;
@@ -161,17 +165,21 @@ fn main() -> Result<()> {
 
         // Calculate ETA
         let eta_duration = pb.eta();
-        let eta_datetime =
-            Utc::now() + Duration::from_std(eta_duration).unwrap_or_else(|_| Duration::seconds(0));
-        let eta_hms = eta_datetime.format("%d:%H:%M:%S").to_string();
+        let eta_seconds = eta_duration.as_secs();
+        let days = eta_seconds / 86400;
+        let hours = (eta_seconds % 86400) / 3600;
+        let minutes = (eta_seconds % 3600) / 60;
+        let seconds = eta_seconds % 60;
+        let eta = format!("{:02}:{:02}:{:02}:{:02}", days, hours, minutes, seconds);
 
-        pb.println(format!("Block: {height} - ETA: {eta_hms}"));
+        pb.println(format!("Block: {height} - ETA: {eta}"));
 
         // Write the new content to the file for every 2 weeks worth of blocks
-        if height % 2016 == 0 {
+        if height % 2016 == 2000 {
             let content = out.join("\n");
             let mut file = File::create("out.csv")?;
             file.write_all(content.as_bytes())?;
+            pb.println("FILE SUCCESSFULLY SAVED TO DISK");
         }
 
         pb.inc(1);
