@@ -122,8 +122,6 @@ fn main() -> Result<()> {
                 if outpoint.script_pubkey.is_p2pk() {
                     p2pk_addresses += 1;
                     p2pk_coins += outpoint.value.to_btc();
-                } else {
-                    continue;
                 }
             }
 
@@ -133,11 +131,11 @@ fn main() -> Result<()> {
                     let txid = txin.previous_output.txid;
                     let transaction = rpc.get_raw_transaction(&txid, None)?;
 
-                    pb.println(format!("{:?}", transaction));
-
                     if transaction.is_coinbase() {
                         continue;
                     }
+
+                    pb.println(format!("{height}: {transaction:?}"));
 
                     // Account for the spent P2PK coins
                     for outpoint in transaction.output {
@@ -174,8 +172,8 @@ fn main() -> Result<()> {
 
         pb.println(format!("Block: {height} - ETA: {eta}"));
 
-        // Write the new content to the file for every 2 weeks worth of blocks
-        if height % 2016 == 2000 {
+        // Write the new content to the file for every 1000 blocks
+        if height % 1000 == 0 {
             let content = out.join("\n");
             let mut file = File::create("out.csv")?;
             file.write_all(content.as_bytes())?;
