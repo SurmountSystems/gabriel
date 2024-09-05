@@ -1,7 +1,7 @@
 use std::{
     env,
     fs::{File, OpenOptions},
-    io::{Read, Seek, Write},
+    io::{Read, Write},
 };
 
 use anyhow::Result;
@@ -12,13 +12,12 @@ use bitcoincore_rpc::{
 use chrono::{TimeZone, Utc};
 use indicatif::ProgressBar;
 
-const HEADER: &str = "Height,Date,Total P2PK addresses,Total P2PK coins";
+const HEADER: &str = "Height,Date,Total P2PK addresses,Total P2PK coins\n";
 
 fn main() -> Result<()> {
     let mut out: Vec<String> = vec![];
-    out.push(HEADER.to_owned());
 
-    // Open the file if it exists, otherwise create it and write the HEADER.
+    // Open the file if it exists, otherwise create it
     let mut file = OpenOptions::new()
         .read(true)
         .write(true)
@@ -26,16 +25,15 @@ fn main() -> Result<()> {
         .truncate(false)
         .open("out.csv")?;
 
-    // Check if the file is empty by checking its length
-    let mut content = String::new();
-    file.read_to_string(&mut content)?;
-    let lines = content.split("\n").collect::<Vec<&str>>();
-    if lines.is_empty() {
-        out.push(HEADER.to_owned());
-    }
+    // Check if the file is empty
+    let metadata = file.metadata()?;
+    let file_is_empty = metadata.len() == 0;
 
-    // Rewind the file to the beginning so you can read from it again
-    file.rewind()?;
+    // If the file is empty, add the header
+    if file_is_empty {
+        out.push(HEADER.to_owned());
+        file.write_all(HEADER.as_bytes())?;
+    }
 
     // Read the file content into a vector of strings
     let mut content = String::new();
@@ -117,7 +115,7 @@ fn main() -> Result<()> {
         let block = rpc.get_block(&hash)?;
 
         // Account for the new P2PK coins
-        for (i, tx) in block.txdata.iter().enumerate() {
+        for tx in block.txdata.iter() {
             for outpoint in &tx.output {
                 if outpoint.script_pubkey.is_p2pk() {
                     p2pk_addresses += 1;
@@ -125,23 +123,18 @@ fn main() -> Result<()> {
                 }
             }
 
-            // If the transaction is not from the coinbase, account for the spent coins
-            if i > 1 {
+            // If the transaction is not coinbase, account for the spent coins
+            if !tx.is_coinbase() {
                 for txin in &tx.input {
                     let txid = txin.previous_output.txid;
-                    let transaction = rpc.get_raw_transaction(&txid, None)?;
+                    let vout = txin.previous_output.vout;
+                    let prev_tx = rpc.get_raw_transaction(&txid, None)?;
 
-                    if transaction.is_coinbase() {
-                        continue;
-                    }
-
-                    // pb.println(format!("{height}: {transaction:?}"));
-
-                    // Account for the spent P2PK coins
-                    for outpoint in transaction.output {
-                        if outpoint.script_pubkey.is_p2pk() {
+                    // Check if the specific output being spent was P2PK
+                    if let Some(prev_output) = prev_tx.output.get(vout as usize) {
+                        if prev_output.script_pubkey.is_p2pk() {
                             p2pk_addresses -= 1;
-                            p2pk_coins -= outpoint.value.to_btc();
+                            p2pk_coins -= prev_output.value.to_btc();
                         }
                     }
                 }
