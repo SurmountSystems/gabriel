@@ -1,7 +1,7 @@
 use std::{
     env,
     fs::{File, OpenOptions},
-    io::{Read, Write},
+    io::{Read, Seek, Write},
 };
 
 use anyhow::Result;
@@ -12,7 +12,7 @@ use bitcoincore_rpc::{
 use chrono::{TimeZone, Utc};
 use indicatif::ProgressBar;
 
-const HEADER: &str = "Height,Date,Total P2PK addresses,Total P2PK coins\n";
+const HEADER: &str = "Height,Date,Total P2PK addresses,Total P2PK coins";
 
 fn main() -> Result<()> {
     let mut out: Vec<String> = vec![];
@@ -25,21 +25,18 @@ fn main() -> Result<()> {
         .truncate(false)
         .open("out.csv")?;
 
-    // Check if the file is empty
-    let metadata = file.metadata()?;
-    let file_is_empty = metadata.len() == 0;
-
-    // If the file is empty, add the header
-    if file_is_empty {
-        out.push(HEADER.to_owned());
-        file.write_all(HEADER.as_bytes())?;
-    }
-
-    // Read the file content into a vector of strings
+    // Read the file content into a string
     let mut content = String::new();
     file.read_to_string(&mut content)?;
 
-    out = content.lines().map(|line| line.to_string()).collect();
+    // Check if the file is empty or doesn't start with the header
+    if content.is_empty() || !content.starts_with(HEADER) {
+        // If empty or no header, add the header to the beginning of out
+        out.push(HEADER.to_owned());
+    }
+
+    // Split the content into lines and collect into the out vector
+    out.extend(content.lines().map(|line| line.to_string()));
 
     // Get the last line of the CSV file and parse the height from it
     let resume_height = if let Some(last_line) = out.last() {
@@ -174,6 +171,13 @@ fn main() -> Result<()> {
         }
 
         pb.inc(1);
+    }
+
+    // When writing back to the file, ensure we start from the beginning
+    file.seek(std::io::SeekFrom::Start(0))?;
+    file.set_len(0)?; // Truncate the file
+    for line in &out {
+        writeln!(file, "{}", line)?;
     }
 
     Ok(())
