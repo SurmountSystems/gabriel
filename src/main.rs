@@ -135,7 +135,7 @@ fn main() -> Result<()> {
                         continue;
                     }
 
-                    pb.println(format!("{height}: {transaction:?}"));
+                    // pb.println(format!("{height}: {transaction:?}"));
 
                     // Account for the spent P2PK coins
                     for outpoint in transaction.output {
