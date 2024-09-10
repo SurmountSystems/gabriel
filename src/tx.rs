@@ -127,27 +127,36 @@ mod tests {
     #[test]
     fn test_transaction_creation_and_txid() {
         let input = TransactionInput {
-            previous_output_txid: [0u8; 32],
+            previous_output_txid: hex::decode("f4184fc596403b9d638783cf57adfe4c75c605f6356fbc91338530e9831e9e16").unwrap().try_into().unwrap(),
             previous_output_vout: 0,
-            script: vec![0x6a, 0x14],
+            script: hex::decode("473044022027542a94d6646c51240f23a76d33088d3dd8815b25e9ea18cac67d1171a3212e02203baf203c6e7b80ebd3e588628466ea28be572fe1aaa3f30947da4763dd3b3d2b01").unwrap(),
             sequence: 0xFFFFFFFF,
         };
 
-        let output = TransactionOutput {
-            value: 50_000_000,
-            script: vec![0x76, 0xa9, 0x14],
+        let output_1 = TransactionOutput {
+            value: 1_000_000_000,
+            script: hex::decode("4104b5abd412d4341b45056d3e376cd446eca43fa871b51961330deebd84423e740daa520690e1d9e074654c59ff87b408db903649623e86f1ca5412786f61ade2bfac").unwrap(),
+        };
+
+        let output_2 = TransactionOutput {
+            value: 3_000_000_000,
+            script: hex::decode("410411db93e1dcdb8a016b49840f8c53bc1eb68a382e97b1482ecad7b148a6909a5cb2e0eaddfb84ccf9744464f82e160bfa9b8b64f9d4c03f999b8643f656b412a3ac").unwrap(),
         };
 
         let tx = Transaction {
             version: 1,
             inputs: vec![input],
-            outputs: vec![output],
+            outputs: vec![output_1, output_2],
             lock_time: 0,
         };
 
         let txid = tx.txid();
 
         // Assert that the txid is not all zeros (this is a basic check)
-        assert_ne!(txid, [0u8; 32]);
+        assert_ne!(
+            txid.to_vec(),
+            hex::decode("a16f3ce4dd5deb92d98ef5cf8afeaf0775ebca408f708b2146c4fb42b41e14be")
+                .unwrap()
+        );
     }
 }
