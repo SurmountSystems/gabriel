@@ -71,6 +71,7 @@ fn main() -> Result<()> {
         last_block_hash = next_block_hash.1;
     }
 
+    println!("Last block hash: {:?}", hex::encode(last_block_hash));
     println!("Height: {}", height);
 
     let mut file = OpenOptions::new()
