@@ -5,13 +5,13 @@ use std::{
 };
 
 use anyhow::Result;
-use bitcoin::{process_blocks_in_parallel, Record};
+use block::{process_blocks_in_parallel, Record};
 use clap::Parser; // Updated import
 
-mod bitcoin;
+mod block;
 mod tx;
 
-use bitcoin::{HeaderMap, ResultMap, TxMap};
+use block::{HeaderMap, ResultMap, TxMap};
 use lock_freedom::map::Map;
 
 const HEADER: &str = "Height,Date,Total P2PK addresses,Total P2PK coins";
@@ -43,7 +43,7 @@ fn main() -> Result<()> {
     }
     let mut out: Vec<String> = vec![];
     let mut last_block_hash: [u8; 32] =
-        hex::decode("000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f")
+        hex::decode("6fe28c0ab6f1b372c1a6a246ae63f74f931e8365e15a089c68d6190000000000")
             .unwrap()
             .try_into()
             .expect("slice with incorrect length"); // Genesis block
@@ -51,6 +51,7 @@ fn main() -> Result<()> {
     let mut p2pk_addresses = 0;
     let mut p2pk_coins = 0.0;
     while let Some(next_block_hash) = header_map.get(&last_block_hash) {
+        // println!("Next block hash: {:?}", hex::encode(next_block_hash.1));
         let record = result_map.get(&next_block_hash.1);
         if let Some(record) = record {
             let Record {
@@ -69,6 +70,8 @@ fn main() -> Result<()> {
         height += 1;
         last_block_hash = next_block_hash.1;
     }
+
+    println!("Height: {}", height);
 
     let mut file = OpenOptions::new()
         .read(true)

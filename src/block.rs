@@ -15,6 +15,7 @@ use nom::{
     IResult,
 };
 use rayon::prelude::*;
+use sha2::{Digest, Sha256};
 
 const MAGIC_NUMBER: u32 = 0xD9B4BEF9; // Bitcoin Mainnet magic number
 
@@ -27,8 +28,8 @@ pub struct BlockHeader {
     pub previous_block_hash: [u8; 32],
     pub merkle_root: [u8; 32],
     pub timestamp: u32,
-    // bits: u32,
-    // nonce: u32,
+    pub bits: u32,
+    pub nonce: u32,
 }
 
 #[derive(Debug)]
@@ -55,8 +56,8 @@ fn parse_block_header(input: &[u8]) -> IResult<&[u8], BlockHeader> {
     let (input, previous_block_hash) = take(32usize)(input)?;
     let (input, merkle_root) = take(32usize)(input)?;
     let (input, timestamp) = le_u32(input)?;
-    let (input, _bits) = le_u32(input)?;
-    let (input, _nonce) = le_u32(input)?;
+    let (input, bits) = le_u32(input)?;
+    let (input, nonce) = le_u32(input)?;
 
     Ok((
         input,
@@ -65,10 +66,26 @@ fn parse_block_header(input: &[u8]) -> IResult<&[u8], BlockHeader> {
             previous_block_hash: previous_block_hash.try_into().unwrap(),
             merkle_root: merkle_root.try_into().unwrap(),
             timestamp,
-            // bits,
-            // nonce,
+            bits,
+            nonce,
         },
     ))
+}
+
+/// Compute block hash from header
+fn compute_block_hash(header: &BlockHeader) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    hasher.update(header.version.to_le_bytes());
+    hasher.update(header.previous_block_hash);
+    hasher.update(header.merkle_root);
+    hasher.update(header.timestamp.to_le_bytes());
+    hasher.update(header.bits.to_le_bytes());
+    hasher.update(header.nonce.to_le_bytes());
+    let first_hash = hasher.finalize();
+
+    let mut hasher = Sha256::new();
+    hasher.update(first_hash);
+    hasher.finalize().into()
 }
 
 /// Parses a varint (variable-length integer)
@@ -227,7 +244,15 @@ fn process_block(
     match parse_blk_file(input) {
         Ok((_, blocks)) => {
             for block in blocks {
-                header_map.insert(block.header.previous_block_hash, block.header.merkle_root);
+                let block_hash = compute_block_hash(&block.header);
+
+                header_map.insert(block.header.previous_block_hash, block_hash);
+
+                // pb.println(format!(
+                //     "Block: {:?} - Hash: {:?}",
+                //     hex::encode(block.header.previous_block_hash),
+                //     hex::encode(compute_block_hash(&block.header))
+                // ));
 
                 let mut p2pk_addresses_added = 0;
                 let mut p2pk_sats_added = 0;
@@ -265,7 +290,7 @@ fn process_block(
                 let date = datetime.format("%m/%d/%Y %H:%M:%S").to_string();
 
                 result_map.insert(
-                    block.header.merkle_root,
+                    block_hash,
                     Record {
                         date,
                         p2pk_addresses_added,

@@ -3,7 +3,7 @@ name = "gabriel"
 version = "0.2.0"
 edition = "2021"
 authors = ["Hunter Beast"]
-about = "Bitcoin indexer"
+description = "Bitcoin indexer"
 publish = false
 
 [dependencies]
