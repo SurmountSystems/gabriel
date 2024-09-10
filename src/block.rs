@@ -299,8 +299,6 @@ fn process_block(
                         p2pk_sats_spent,
                     },
                 );
-
-                pb.inc(1);
             }
         }
         Err(e) => {
@@ -345,7 +343,7 @@ pub fn process_blocks_in_parallel(
         }
     }
 
-    let pb = ProgressBar::new(blk_files.len() as u64 * 128 + 300_000); // Heuristic
+    let pb = ProgressBar::new(blk_files.len() as u64);
 
     // Process each file in parallel using Rayon
     blk_files.par_iter().for_each(|path| {
@@ -361,6 +359,7 @@ pub fn process_blocks_in_parallel(
         let eta = format!("{:02}:{:02}:{:02}:{:02}", days, hours, minutes, seconds);
 
         pb.println(format!("Blockfile: {path:?} - ETA: {eta}"));
+        pb.inc(1);
     });
 
     Ok(())
