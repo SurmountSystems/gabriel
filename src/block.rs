@@ -1,17 +1,18 @@
 use std::{
+    collections::BTreeMap,
     convert::TryInto,
     fs::File,
     io::{self, Read},
     path::{Path, PathBuf},
+    sync::{Arc, RwLock},
 };
 
 use bitcoin::opcodes::all::{OP_CHECKSIG, OP_PUSHBYTES_33, OP_PUSHBYTES_65};
 use chrono::{TimeZone, Utc};
 use indicatif::ProgressBar;
-use lock_freedom::map::Map;
 use nom::{
     bytes::complete::take,
-    number::complete::{le_u32, le_u64},
+    number::complete::{le_u16, le_u32, le_u64, le_u8},
     IResult,
 };
 use rayon::prelude::*;
@@ -23,12 +24,11 @@ use crate::tx::{Transaction, TransactionInput, TransactionOutput};
 
 #[derive(Debug)]
 pub struct BlockHeader {
-    #[allow(dead_code)]
     pub version: u32,
     pub previous_block_hash: [u8; 32],
     pub merkle_root: [u8; 32],
     pub timestamp: u32,
-    pub bits: u32,
+    pub target: u32,
     pub nonce: u32,
 }
 
@@ -46,9 +46,9 @@ pub struct Record {
     pub p2pk_sats_spent: u64,
 }
 
-pub type HeaderMap = Map<[u8; 32], [u8; 32]>;
-pub type TxMap = Map<([u8; 32], u32), u64>;
-pub type ResultMap = Map<[u8; 32], Record>;
+pub type HeaderMap = Arc<RwLock<BTreeMap<[u8; 32], [u8; 32]>>>;
+pub type TxMap = Arc<RwLock<BTreeMap<([u8; 32], u32), u64>>>;
+pub type ResultMap = Arc<RwLock<BTreeMap<[u8; 32], Record>>>;
 
 /// Parses a Bitcoin block header
 fn parse_block_header(input: &[u8]) -> IResult<&[u8], BlockHeader> {
@@ -66,7 +66,7 @@ fn parse_block_header(input: &[u8]) -> IResult<&[u8], BlockHeader> {
             previous_block_hash: previous_block_hash.try_into().unwrap(),
             merkle_root: merkle_root.try_into().unwrap(),
             timestamp,
-            bits,
+            target: bits,
             nonce,
         },
     ))
@@ -79,7 +79,7 @@ fn compute_block_hash(header: &BlockHeader) -> [u8; 32] {
     hasher.update(header.previous_block_hash);
     hasher.update(header.merkle_root);
     hasher.update(header.timestamp.to_le_bytes());
-    hasher.update(header.bits.to_le_bytes());
+    hasher.update(header.target.to_le_bytes());
     hasher.update(header.nonce.to_le_bytes());
     let first_hash = hasher.finalize();
 
@@ -90,17 +90,22 @@ fn compute_block_hash(header: &BlockHeader) -> [u8; 32] {
 
 /// Parses a varint (variable-length integer)
 fn parse_varint(input: &[u8]) -> IResult<&[u8], u64> {
-    let (input, first_byte) = take(1usize)(input)?;
-    let first_byte = first_byte[0];
+    let (input, first_byte) = le_u8(input)?;
 
-    if first_byte < 0xfd {
-        Ok((input, first_byte as u64))
-    } else if first_byte == 0xfd || first_byte == 0xfe {
-        let (input, value) = le_u32(input)?;
-        Ok((input, value as u64))
-    } else {
-        let (input, value) = le_u64(input)?;
-        Ok((input, value))
+    match first_byte {
+        0..=0xfc => Ok((input, first_byte as u64)),
+        0xfd => {
+            let (input, value) = le_u16(input)?;
+            Ok((input, value as u64))
+        }
+        0xfe => {
+            let (input, value) = le_u32(input)?;
+            Ok((input, value as u64))
+        }
+        0xff => {
+            let (input, value) = le_u64(input)?;
+            Ok((input, value))
+        }
     }
 }
 
@@ -246,7 +251,10 @@ fn process_block(
             for block in blocks {
                 let block_hash = compute_block_hash(&block.header);
 
-                header_map.insert(block.header.previous_block_hash, block_hash);
+                header_map
+                    .write()
+                    .unwrap()
+                    .insert(block.header.previous_block_hash, block_hash);
 
                 // pb.println(format!(
                 //     "Block: {:?} - Hash: {:?}",
@@ -264,19 +272,24 @@ fn process_block(
                         if is_p2pk(&txout.script) {
                             p2pk_addresses_added += 1;
                             p2pk_sats_added += txout.value;
-                            tx_map.insert((tx.txid(), i as u32), txout.value);
+                            tx_map
+                                .write()
+                                .unwrap()
+                                .insert((tx.txid(), i as u32), txout.value);
                         }
                     }
+
+                    let tx_map_read = tx_map.read().unwrap();
 
                     for txin in &tx.inputs {
                         let txid = txin.previous_output_txid;
                         let vout = txin.previous_output_vout;
-                        let prev_tx = tx_map.get(&(txid, vout));
+                        let prev_tx = tx_map_read.get(&(txid, vout));
 
                         // Check if the specific output being spent was P2PK
                         if let Some(prev_output) = prev_tx {
                             p2pk_addresses_spent += 1;
-                            p2pk_sats_spent += prev_output.1;
+                            p2pk_sats_spent += prev_output;
                         }
                     }
                 }
@@ -289,7 +302,7 @@ fn process_block(
 
                 let date = datetime.format("%m/%d/%Y %H:%M:%S").to_string();
 
-                result_map.insert(
+                result_map.write().unwrap().insert(
                     block_hash,
                     Record {
                         date,

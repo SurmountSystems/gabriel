@@ -346,7 +346,6 @@ dependencies = [
  "clap",
  "hex",
  "indicatif",
- "lock_freedom",
  "nom",
  "rayon",
  "serde",
@@ -468,15 +467,6 @@ name = "libc"
 version = "0.2.158"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d8adc4bb1803a324070e64a98ae98f38934d91957a99cfb3a43dcbc01bc56439"
-
-[[package]]
-name = "lock_freedom"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b04629d1feb5f88ac4193d199275eabf5a52647099fb6af920428af07563d52"
-dependencies = [
- "tux-owned-alloc",
-]
 
 [[package]]
 name = "log"
@@ -662,12 +652,6 @@ dependencies = [
  "quote",
  "unicode-ident",
 ]
-
-[[package]]
-name = "tux-owned-alloc"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bfd1a8e70b411e4a027ebf27c847db314a2c96eaae4c7bf0a9b528bcdd5e041f"
 
 [[package]]
 name = "typenum"

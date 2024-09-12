@@ -12,7 +12,7 @@ mod block;
 mod tx;
 
 use block::{HeaderMap, ResultMap, TxMap};
-use lock_freedom::map::Map;
+// use lock_freedom::map::Map;
 
 const HEADER: &str = "Height,Date,Total P2PK addresses,Total P2PK coins";
 
@@ -32,11 +32,11 @@ fn main() -> Result<()> {
     let args = Args::parse(); // Ensure `clap::Parser` trait is in scope
 
     // Maps previous block hash to next merkle root
-    let header_map: HeaderMap = Map::new();
+    let header_map: HeaderMap = Default::default();
     // Maps txid to tx value
-    let tx_map: TxMap = Map::new();
+    let tx_map: TxMap = Default::default();
     // Maps header hash to result Record
-    let result_map: ResultMap = Map::new();
+    let result_map: ResultMap = Default::default();
 
     if let Err(e) = process_blocks_in_parallel(&args.input, &result_map, &tx_map, &header_map) {
         eprintln!("Failed to process blocks: {:?}", e);
@@ -50,9 +50,10 @@ fn main() -> Result<()> {
     let mut height = 0;
     let mut p2pk_addresses = 0;
     let mut p2pk_coins = 0.0;
-    while let Some(next_block_hash) = header_map.get(&last_block_hash) {
+    while let Some(next_block_hash) = header_map.read().unwrap().get(&last_block_hash) {
         // println!("Next block hash: {:?}", hex::encode(next_block_hash.1));
-        let record = result_map.get(&next_block_hash.1);
+        let result_map_read = result_map.read().unwrap();
+        let record = result_map_read.get(next_block_hash);
         if let Some(record) = record {
             let Record {
                 date,
@@ -60,7 +61,7 @@ fn main() -> Result<()> {
                 p2pk_sats_added,
                 p2pk_addresses_spent,
                 p2pk_sats_spent,
-            } = &record.1;
+            } = &record;
             p2pk_addresses += p2pk_addresses_added;
             p2pk_addresses -= p2pk_addresses_spent;
             p2pk_coins += p2pk_sats_added.to_owned() as f64 / 100_000_000.0;
@@ -68,7 +69,7 @@ fn main() -> Result<()> {
             out.push(format!("{height},{date},{p2pk_addresses},{p2pk_coins}"));
         }
         height += 1;
-        last_block_hash = next_block_hash.1;
+        last_block_hash = *next_block_hash;
     }
 
     println!("Last block hash: {:?}", hex::encode(last_block_hash));
