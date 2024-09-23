@@ -245,7 +245,9 @@ fn process_block(
     result_map: &ResultMap,
     tx_map: &TxMap,
     header_map: &HeaderMap,
-) {
+) -> usize {
+    let mut blocks_processed = 0;
+
     match parse_blk_file(input) {
         Ok((_, blocks)) => {
             for block in blocks {
@@ -312,12 +314,16 @@ fn process_block(
                         p2pk_sats_spent,
                     },
                 );
+
+                blocks_processed += 1;
             }
         }
         Err(e) => {
             pb.println(format!("Error parsing blk file: {e:?}"));
         }
     }
+
+    blocks_processed
 }
 
 /// Process a single block file (blkxxxxx.dat)
@@ -327,13 +333,13 @@ fn process_block_file(
     result_map: &ResultMap,
     tx_map: &TxMap,
     header_map: &HeaderMap,
-) {
+) -> usize {
     let mut file = File::open(path).expect("Failed to open block file");
     let mut buffer = Vec::new();
     file.read_to_end(&mut buffer)
         .expect("Failed to read block file");
     // Process the blk file containing multiple blocks
-    process_block(&buffer, pb, result_map, tx_map, header_map);
+    process_block(&buffer, pb, result_map, tx_map, header_map)
 }
 
 /// Iterate through the blocks directory and process each blkxxxxx.dat file in parallel
@@ -346,7 +352,7 @@ pub fn process_blocks_in_parallel(
     let mut blk_files: Vec<PathBuf> = vec![];
 
     // Iterate through the directory for blkxxxxx.dat files
-    for i in 0.. {
+    for i in 2000..2001 {
         let filename = format!("blk{:05}.dat", i);
         let path = blocks_dir.join(filename);
         if path.exists() {
@@ -360,7 +366,7 @@ pub fn process_blocks_in_parallel(
 
     // Process each file in parallel using Rayon
     blk_files.par_iter().for_each(|path| {
-        process_block_file(path, &pb, result_map, tx_map, header_map);
+        let blocks_processed = process_block_file(path, &pb, result_map, tx_map, header_map);
 
         // Calculate ETA
         let eta_duration = pb.eta();
@@ -371,7 +377,9 @@ pub fn process_blocks_in_parallel(
         let seconds = eta_seconds % 60;
         let eta = format!("{:02}:{:02}:{:02}:{:02}", days, hours, minutes, seconds);
 
-        pb.println(format!("Blockfile: {path:?} - ETA: {eta}"));
+        pb.println(format!(
+            "Blockfile: {path:?} - ETA: {eta} - Blocks processed: {blocks_processed}"
+        ));
         pb.inc(1);
     });
 
