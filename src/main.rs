@@ -12,9 +12,8 @@ mod block;
 mod tx;
 
 use block::{HeaderMap, ResultMap, TxMap};
-// use lock_freedom::map::Map;
 
-const HEADER: &str = "Height,Date,Total P2PK addresses,Total P2PK coins";
+const HEADER: &str = "Height,Date,Total P2PK addresses,Total P2PK coins\n";
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)] // Updated attribute
@@ -43,7 +42,7 @@ fn main() -> Result<()> {
     }
     let mut out: Vec<String> = vec![];
     let mut last_block_hash: [u8; 32] =
-        hex::decode("6fe28c0ab6f1b372c1a6a246ae63f74f931e8365e15a089c68d6190000000000")
+        hex::decode("4860eb18bf1b1620e37e9490fc8a427514416fd75159ab86688e9a8300000000")
             .unwrap()
             .try_into()
             .expect("slice with incorrect length"); // Genesis block

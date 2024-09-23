@@ -138,7 +138,6 @@ fn parse_transaction_output(input: &[u8]) -> IResult<&[u8], TransactionOutput> {
         input,
         TransactionOutput {
             value,
-            // script_length,
             script: script.to_vec(),
         },
     ))
@@ -351,6 +350,17 @@ pub fn process_blocks_in_parallel(
 ) -> io::Result<()> {
     let mut blk_files: Vec<PathBuf> = vec![];
 
+    // header_map.write().unwrap().insert(
+    //     hex::decode("e12626f2721b3bc1af81af196c687f4acfe474001627f7000000000000000000")
+    //         .unwrap()
+    //         .try_into()
+    //         .unwrap(),
+    //     hex::decode("7f5c058a0804708efdee57eb9e3eb0f8e6ad9fe2000252000000000000000000")
+    //         .unwrap()
+    //         .try_into()
+    //         .unwrap(),
+    // );
+
     // Iterate through the directory for blkxxxxx.dat files
     for i in 2000..2001 {
         let filename = format!("blk{:05}.dat", i);
@@ -371,11 +381,9 @@ pub fn process_blocks_in_parallel(
         // Calculate ETA
         let eta_duration = pb.eta();
         let eta_seconds = eta_duration.as_secs();
-        let days = eta_seconds / 86400;
-        let hours = (eta_seconds % 86400) / 3600;
         let minutes = (eta_seconds % 3600) / 60;
         let seconds = eta_seconds % 60;
-        let eta = format!("{:02}:{:02}:{:02}:{:02}", days, hours, minutes, seconds);
+        let eta = format!("{:02}:{:02}", minutes, seconds);
 
         pb.println(format!(
             "Blockfile: {path:?} - ETA: {eta} - Blocks processed: {blocks_processed}"
