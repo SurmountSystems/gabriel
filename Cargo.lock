@@ -346,6 +346,7 @@ dependencies = [
  "clap",
  "hex",
  "indicatif",
+ "log",
  "nom",
  "rayon",
  "serde",

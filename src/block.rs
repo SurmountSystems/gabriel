@@ -2,7 +2,7 @@ use std::{
     collections::BTreeMap,
     convert::TryInto,
     fs::File,
-    io::{self, Read},
+    io::{self, Read, Write},
     path::{Path, PathBuf},
     sync::{Arc, RwLock},
 };
@@ -10,6 +10,7 @@ use std::{
 use bitcoin::opcodes::all::{OP_CHECKSIG, OP_PUSHBYTES_33, OP_PUSHBYTES_65};
 use chrono::{TimeZone, Utc};
 use indicatif::ProgressBar;
+use log::debug;
 use nom::{
     bytes::complete::take,
     number::complete::{le_u16, le_u32, le_u64, le_u8},
@@ -20,7 +21,7 @@ use sha2::{Digest, Sha256};
 
 const MAGIC_NUMBER: u32 = 0xD9B4BEF9; // Bitcoin Mainnet magic number
 
-use crate::tx::{Transaction, TransactionInput, TransactionOutput};
+use crate::tx::{Transaction, TransactionInput, TransactionOutput, WitnessItem};
 
 #[derive(Debug)]
 pub struct BlockHeader {
@@ -71,6 +72,24 @@ fn parse_block_header(input: &[u8]) -> IResult<&[u8], BlockHeader> {
         },
     ))
 }
+
+// fn last_block_header_prefix(file: &mut File, marker: u32) -> Option<u64> {
+//     let file_len = file.metadata().unwrap().len();
+//     let mut buffer = [0u8; 4];
+//     let mut offset = file_len - 4;
+//     file.seek(SeekFrom::End(-4)).unwrap();
+//     while offset <= file_len - 4 {
+//         file.read_exact(&mut buffer).unwrap();
+//         let val = u32::from_le_bytes(buffer);
+
+//         if val == marker {
+//             return Some(offset);
+//         }
+//         offset -= 1;
+//         file.seek(SeekFrom::Start(offset)).unwrap();
+//     }
+//     None
+// }
 
 /// Compute block hash from header
 fn compute_block_hash(header: &BlockHeader) -> [u8; 32] {
@@ -124,6 +143,7 @@ fn parse_transaction_input(input: &[u8]) -> IResult<&[u8], TransactionInput> {
             previous_output_vout,
             script: script.to_vec(),
             sequence,
+            witness: Vec::new(),
         },
     ))
 }
@@ -143,21 +163,119 @@ fn parse_transaction_output(input: &[u8]) -> IResult<&[u8], TransactionOutput> {
     ))
 }
 
-/// Parses a Bitcoin transaction
+// /// Parses a witness item
+// fn parse_witness_item(input: &[u8]) -> IResult<&[u8], WitnessItem> {
+//     let (input, witness_field_length) = parse_varint(input)?;
+//     let (input, witness) = take(witness_field_length as usize)(input)?;
+
+//     Ok((
+//         input,
+//         WitnessItem {
+//             witness: witness.to_vec(),
+//         },
+//     ))
+// }
+
+/// Parses a Bitcoin transaction referencing the marker and flag by array indices.
 fn parse_transaction(input: &[u8]) -> IResult<&[u8], Transaction> {
-    let (input, version) = le_u32(input)?;
+    let mut offset = 0;
 
-    let (input, input_count) = parse_varint(input)?;
-    let (input, inputs) = nom::multi::count(parse_transaction_input, input_count as usize)(input)?;
+    // Ensure there are at least 4 bytes for the version
+    if input.len() < offset + 4 {
+        return Err(nom::Err::Error(nom::error::Error::new(
+            input,
+            nom::error::ErrorKind::TooLarge,
+        )));
+    }
 
-    let (input, output_count) = parse_varint(input)?;
-    let (input, outputs) =
-        nom::multi::count(parse_transaction_output, output_count as usize)(input)?;
+    // Parse version (4 bytes, Little-Endian)
+    let version = u32::from_le_bytes(input[offset..offset + 4].try_into().unwrap());
+    debug!("Transaction Version: {}", version);
+    offset += 4;
 
-    let (input, lock_time) = le_u32(input)?;
+    // Initialize is_segwit flag
+    let mut is_segwit = false;
+
+    // Check if there are enough bytes to read marker and flag
+    if input.len() > offset + 2 {
+        let marker = input[offset];
+        let flag = input[offset + 1];
+        if marker == 0x00 && flag == 0x01 {
+            is_segwit = true;
+            debug!("SegWit Transaction Detected");
+            offset += 2; // Consume marker and flag
+        } else {
+            debug!("Legacy Transaction Detected");
+        }
+    } else {
+        debug!("Insufficient bytes for marker and flag, assuming Legacy Transaction");
+    }
+
+    // Parse input count (VarInt)
+    let (remaining, input_count) = parse_varint(&input[offset..])?;
+    let consumed = input.len() - remaining.len() - offset;
+    offset += consumed;
+    debug!("Input Count: {}", input_count);
+
+    // Parse inputs
+    let mut inputs = Vec::with_capacity(input_count as usize);
+    for i in 0..input_count {
+        let (new_remaining, txin) = parse_transaction_input(&input[offset..])?;
+        let consumed = input[offset..].len() - new_remaining.len();
+        offset += consumed;
+        debug!("Parsed Input {}: {:?}", i + 1, txin.script.len());
+        inputs.push(txin);
+    }
+
+    // Parse output count (VarInt)
+    let (remaining, output_count) = parse_varint(&input[offset..])?;
+    let consumed = input.len() - remaining.len() - offset;
+    offset += consumed;
+    debug!("Output Count: {}", output_count);
+
+    // Parse outputs
+    let mut outputs = Vec::with_capacity(output_count as usize);
+    for i in 0..output_count {
+        let (new_remaining, txout) = parse_transaction_output(&input[offset..])?;
+        let consumed = input[offset..].len() - new_remaining.len();
+        offset += consumed;
+        debug!("Parsed Output {}: {:?}", i + 1, txout.script.len());
+        outputs.push(txout);
+    }
+
+    // Parse witness data if SegWit
+    if is_segwit {
+        for (i, _txin) in inputs.iter_mut().enumerate() {
+            let (new_remaining, witness) = parse_witness(&input[offset..])?;
+            let consumed = input[offset..].len() - new_remaining.len();
+            offset += consumed;
+            debug!("Parsed Witness for Input {}: {:?}", i + 1, witness.len());
+            // txin.witness = witness;
+        }
+    }
+
+    // Parse lock_time (4 bytes, Little-Endian)
+    if input.len() < offset + 4 {
+        return Err(nom::Err::Error(nom::error::Error::new(
+            input,
+            nom::error::ErrorKind::TooLarge,
+        )));
+    }
+    let lock_time = u32::from_le_bytes(input[offset..offset + 4].try_into().unwrap());
+    debug!("Lock Time: {}", lock_time);
+    offset += 4;
+
+    // Ensure we've consumed the correct amount of bytes
+    let remaining = &input[offset..];
+    if !remaining.is_empty() {
+        debug!(
+            "Warning: Remaining bytes after parsing transaction: {}",
+            remaining.len()
+        );
+    }
 
     Ok((
-        input,
+        remaining,
         Transaction {
             version,
             inputs,
@@ -165,6 +283,24 @@ fn parse_transaction(input: &[u8]) -> IResult<&[u8], Transaction> {
             lock_time,
         },
     ))
+}
+
+/// Parses the witness data for a single input
+fn parse_witness(input: &[u8]) -> IResult<&[u8], Vec<WitnessItem>> {
+    let (input, stack_item_count) = parse_varint(input)?;
+    let mut witness_items = Vec::new();
+
+    let mut remaining = input;
+    for _ in 0..stack_item_count {
+        let (new_input, size) = parse_varint(remaining)?;
+        let (new_input, data) = take(size as usize)(new_input)?;
+        witness_items.push(WitnessItem {
+            witness: data.to_vec(),
+        });
+        remaining = new_input;
+    }
+
+    Ok((remaining, witness_items))
 }
 
 /// Parse the block size and return the size in bytes
@@ -176,7 +312,12 @@ fn parse_block_size(input: &[u8]) -> IResult<&[u8], u32> {
 fn parse_block(input: &[u8]) -> IResult<&[u8], BitcoinBlock> {
     let (input, header) = parse_block_header(input)?;
 
+    debug!("Parse block input len: {:?}", input.len());
+
     let (input, transaction_count) = parse_varint(input)?;
+
+    debug!("Transaction count: {:?}", transaction_count);
+
     let (input, transactions) =
         nom::multi::count(parse_transaction, transaction_count as usize)(input)?;
 
@@ -202,8 +343,16 @@ fn parse_block_with_magic(input: &[u8]) -> IResult<&[u8], BitcoinBlock> {
     let (input, block_size) = parse_block_size(input)?;
     let block_size = block_size as usize;
 
+    debug!("Block size: {:?}", block_size);
+
     let (remaining, block_data) = take(block_size)(input)?;
-    let (_, block) = parse_block(block_data)?;
+
+    debug!("Block data len: {:?}", block_data.len());
+    debug!("Remaining len: {:?}", remaining.len());
+
+    let (block_remainder, block) = parse_block(block_data)?;
+
+    assert!(block_remainder.is_empty());
 
     Ok((remaining, block))
 }
@@ -219,7 +368,12 @@ fn parse_blk_file(input: &[u8]) -> IResult<&[u8], Vec<BitcoinBlock>> {
                 blocks.push(block);
                 remaining_input = remaining;
             }
-            Err(_) => {
+            Err(err) => {
+                // write error to error.txt
+                debug!("Input len: {:?}", input.len());
+                let mut file = File::create("error.txt").expect("Failed to create error file");
+                file.write_all(err.to_string().as_bytes())
+                    .expect("Failed to write to error file");
                 break; // Stop if we can't parse more blocks
             }
         }
@@ -318,7 +472,7 @@ fn process_block(
             }
         }
         Err(e) => {
-            pb.println(format!("Error parsing blk file: {e:?}"));
+            pb.println(format!("Error parsing blk file: {:#?}", e));
         }
     }
 
@@ -350,19 +504,8 @@ pub fn process_blocks_in_parallel(
 ) -> io::Result<()> {
     let mut blk_files: Vec<PathBuf> = vec![];
 
-    // header_map.write().unwrap().insert(
-    //     hex::decode("e12626f2721b3bc1af81af196c687f4acfe474001627f7000000000000000000")
-    //         .unwrap()
-    //         .try_into()
-    //         .unwrap(),
-    //     hex::decode("7f5c058a0804708efdee57eb9e3eb0f8e6ad9fe2000252000000000000000000")
-    //         .unwrap()
-    //         .try_into()
-    //         .unwrap(),
-    // );
-
     // Iterate through the directory for blkxxxxx.dat files
-    for i in 2000..2001 {
+    for i in 0.. {
         let filename = format!("blk{:05}.dat", i);
         let path = blocks_dir.join(filename);
         if path.exists() {
@@ -381,12 +524,14 @@ pub fn process_blocks_in_parallel(
         // Calculate ETA
         let eta_duration = pb.eta();
         let eta_seconds = eta_duration.as_secs();
+        let hours = (eta_seconds % 86400) / 3600;
         let minutes = (eta_seconds % 3600) / 60;
         let seconds = eta_seconds % 60;
-        let eta = format!("{:02}:{:02}", minutes, seconds);
+        let eta = format!("{:02}:{:02}:{:02}", hours, minutes, seconds);
 
         pb.println(format!(
-            "Blockfile: {path:?} - ETA: {eta} - Blocks processed: {blocks_processed}"
+            "Blockfile: {:?} - ETA: {} - Blocks processed: {}",
+            path, eta, blocks_processed
         ));
         pb.inc(1);
     });

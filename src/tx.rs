@@ -8,6 +8,8 @@ pub struct TransactionInput {
     pub previous_output_vout: u32,
     pub script: Vec<u8>,
     pub sequence: u32,
+    #[allow(dead_code)]
+    pub witness: Vec<WitnessItem>,
 }
 
 #[derive(Debug)]
@@ -22,6 +24,12 @@ pub struct Transaction {
     pub inputs: Vec<TransactionInput>,
     pub outputs: Vec<TransactionOutput>,
     pub lock_time: u32,
+}
+
+#[derive(Debug)]
+pub struct WitnessItem {
+    #[allow(dead_code)]
+    pub witness: Vec<u8>,
 }
 
 impl TransactionInput {
@@ -131,6 +139,7 @@ mod tests {
             previous_output_vout: 0,
             script: hex::decode("473044022027542a94d6646c51240f23a76d33088d3dd8815b25e9ea18cac67d1171a3212e02203baf203c6e7b80ebd3e588628466ea28be572fe1aaa3f30947da4763dd3b3d2b01").unwrap(),
             sequence: 0xFFFFFFFF,
+            witness: vec![],
         };
 
         let output_1 = TransactionOutput {
