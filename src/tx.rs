@@ -101,8 +101,6 @@ impl Transaction {
         let mut serialized_tx = Vec::new();
         self.serialize(&mut serialized_tx).unwrap();
 
-        println!("serialized_tx: {:?}", hex::encode(&serialized_tx));
-
         // Perform double SHA-256 hashing
         let hash1 = Sha256::digest(&serialized_tx);
         let hash2 = Sha256::digest(hash1);
@@ -174,7 +172,7 @@ mod tests {
 
         assert_eq!(
             hex::encode(txid),
-           "169e1e83e930853391bc6f35f605c6754cfead57cf8387639d3b4096c54f18f4" // f4184fc596403b9d638783cf57adfe4c75c605f6356fbc91338530e9831e9e16 in natural byte order
+            "169e1e83e930853391bc6f35f605c6754cfead57cf8387639d3b4096c54f18f4" // f4184fc596403b9d638783cf57adfe4c75c605f6356fbc91338530e9831e9e16 in natural byte order
         );
     }
 }
