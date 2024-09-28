@@ -48,7 +48,7 @@ pub struct Record {
 }
 
 pub type HeaderMap = Arc<RwLock<BTreeMap<[u8; 32], [u8; 32]>>>;
-pub type TxMap = Arc<RwLock<BTreeMap<([u8; 32], u32), u64>>>;
+pub type TxMap = Arc<RwLock<BTreeMap<([u8; 32], u16), Transaction>>>;
 pub type ResultMap = Arc<RwLock<BTreeMap<[u8; 32], Record>>>;
 
 /// Parses a Bitcoin block header
@@ -136,11 +136,14 @@ fn parse_transaction_input(input: &[u8]) -> IResult<&[u8], TransactionInput> {
     let (input, script) = take(script_length as usize)(input)?;
     let (input, sequence) = le_u32(input)?;
 
+    let mut previous_output_txid: [u8; 32] = previous_output_txid.try_into().unwrap();
+    previous_output_txid.reverse();
+
     Ok((
         input,
         TransactionInput {
-            previous_output_txid: previous_output_txid.try_into().unwrap(),
-            previous_output_vout,
+            previous_output_txid,
+            previous_output_vout: previous_output_vout as u16,
             script: script.to_vec(),
             sequence,
             witness: Vec::new(),
@@ -499,7 +502,7 @@ fn process_block(
                             tx_map
                                 .write()
                                 .unwrap()
-                                .insert((tx.txid(), i as u32), txout.value);
+                                .insert((tx.txid(), i as u16), tx.clone());
                         }
                     }
 
@@ -512,8 +515,11 @@ fn process_block(
 
                         // Check if the specific output being spent was P2PK
                         if let Some(prev_output) = prev_tx {
-                            p2pk_addresses_spent += 1;
-                            p2pk_sats_spent += prev_output;
+                            let prevout = &prev_output.outputs[vout as usize];
+                            if is_p2pk(&prevout.script) {
+                                p2pk_addresses_spent += 1;
+                                p2pk_sats_spent += prevout.value;
+                            }
                         }
                     }
                 }
