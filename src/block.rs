@@ -48,7 +48,7 @@ pub struct Record {
 }
 
 pub type HeaderMap = Arc<RwLock<BTreeMap<[u8; 32], [u8; 32]>>>;
-pub type TxMap = Arc<RwLock<BTreeMap<([u8; 32], u16), Transaction>>>;
+pub type TxMap = Arc<RwLock<BTreeMap<([u8; 32], u16), u64>>>;
 pub type ResultMap = Arc<RwLock<BTreeMap<[u8; 32], Record>>>;
 
 /// Parses a Bitcoin block header
@@ -502,7 +502,7 @@ fn process_block(
                             tx_map
                                 .write()
                                 .unwrap()
-                                .insert((tx.txid(), i as u16), tx.clone());
+                                .insert((tx.txid(), i as u16), txout.value);
                         }
                     }
 
@@ -514,12 +514,9 @@ fn process_block(
                         let prev_tx = tx_map_read.get(&(txid, vout));
 
                         // Check if the specific output being spent was P2PK
-                        if let Some(prev_output) = prev_tx {
-                            let prevout = &prev_output.outputs[vout as usize];
-                            if is_p2pk(&prevout.script) {
-                                p2pk_addresses_spent += 1;
-                                p2pk_sats_spent += prevout.value;
-                            }
+                        if let Some(value) = prev_tx {
+                            p2pk_addresses_spent += 1;
+                            p2pk_sats_spent += value;
                         }
                     }
                 }
