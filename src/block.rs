@@ -274,6 +274,24 @@ fn parse_transaction(input: &[u8]) -> IResult<&[u8], Transaction> {
         );
     }
 
+    let mut hasher = Sha256::new();
+    hasher.update(version.to_le_bytes());
+
+    // Use TransactionInputVec wrapper for inputs without cloning
+    let input_vec = TransactionInputVec(&inputs);
+    hasher.update(input_vec.as_ref());
+
+    // Use TransactionOutputVec wrapper for outputs without cloning
+    let output_vec = TransactionOutputVec(&outputs);
+    hasher.update(output_vec.as_ref());
+
+    hasher.update(lock_time.to_le_bytes());
+    let txid: [u8; 32] = hasher.finalize().into();
+
+    let mut hasher = Sha256::new();
+    hasher.update(txid);
+    let txid: [u8; 32] = hasher.finalize().into();
+
     Ok((
         remaining,
         Transaction {
@@ -281,8 +299,59 @@ fn parse_transaction(input: &[u8]) -> IResult<&[u8], Transaction> {
             inputs,
             outputs,
             lock_time,
+            txid,
         },
     ))
+}
+
+/// Implement AsRef<[u8]> for TransactionOutput
+impl TransactionOutput {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut buffer = Vec::with_capacity(8 + 8 + self.script.len());
+        buffer.extend_from_slice(&self.value.to_le_bytes());
+        buffer.extend_from_slice(&(self.script.len() as u64).to_le_bytes());
+        buffer.extend_from_slice(&self.script);
+        buffer
+    }
+}
+
+// We can't implement AsRef<[u8]> for Vec<TransactionOutput> directly
+// because Vec is not defined in our crate. Instead, we'll create a wrapper type.
+pub struct TransactionOutputVec<'a>(pub &'a [TransactionOutput]);
+
+/// Implement AsRef<[u8]> for TransactionOutputVec
+impl AsRef<[u8]> for TransactionOutputVec<'_> {
+    fn as_ref(&self) -> &[u8] {
+        // This implementation is not efficient and should be used with caution
+        // It allocates a new buffer on each call
+        let buffer: Vec<u8> = self.0.iter().flat_map(|output| output.to_bytes()).collect();
+        Box::leak(buffer.into_boxed_slice())
+    }
+}
+
+pub struct TransactionInputVec<'a>(pub &'a [TransactionInput]);
+
+/// TransactionInputVec implements AsRef<[u8]>
+impl AsRef<[u8]> for TransactionInputVec<'_> {
+    fn as_ref(&self) -> &[u8] {
+        // This implementation is not efficient and should be used with caution
+        // It allocates a new buffer on each call
+        let buffer: Vec<u8> = self.0.iter().flat_map(|input| input.to_bytes()).collect();
+        Box::leak(buffer.into_boxed_slice())
+    }
+}
+
+// Add a to_bytes method to TransactionInput
+impl TransactionInput {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut buffer = Vec::new();
+        buffer.extend_from_slice(&self.previous_output_txid);
+        buffer.extend_from_slice(&self.previous_output_vout.to_le_bytes());
+        buffer.extend_from_slice(&(self.script.len() as u64).to_le_bytes());
+        buffer.extend_from_slice(&self.script);
+        buffer.extend_from_slice(&self.sequence.to_le_bytes());
+        buffer
+    }
 }
 
 /// Parses the witness data for a single input

@@ -24,6 +24,7 @@ pub struct Transaction {
     pub inputs: Vec<TransactionInput>,
     pub outputs: Vec<TransactionOutput>,
     pub lock_time: u32,
+    pub txid: [u8; 32],
 }
 
 #[derive(Debug)]
@@ -157,6 +158,7 @@ mod tests {
             inputs: vec![input],
             outputs: vec![output_1, output_2],
             lock_time: 0,
+            txid: [0u8; 32],
         };
 
         let txid = tx.txid();
