@@ -6,7 +6,7 @@ use std::{
 
 use anyhow::Result;
 use block::{process_blocks_in_parallel, Record};
-use clap::Parser; // Updated import
+use clap::{Parser, Subcommand}; // Updated import
 
 mod block;
 mod tx;
@@ -16,20 +16,44 @@ use block::{HeaderMap, ResultMap, TxMap};
 const HEADER: &str = "Height,Date,Total P2PK addresses,Total P2PK coins\n";
 
 #[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)] // Updated attribute
-struct Args {
+#[command(author, version, about, long_about = None)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand, Debug)]
+enum Commands {
+    Index(IndexArgs),
+    Graph(GraphArgs),
+}
+
+#[derive(Parser, Debug)]
+struct IndexArgs {
     /// Bitcoin directory path
-    #[arg(short, long)] // Updated attribute
+    #[arg(short, long)]
     input: PathBuf,
 
     /// CSV output file path
-    #[arg(short, long)] // Updated attribute
+    #[arg(short, long)]
     output: PathBuf,
 }
 
-fn main() -> Result<()> {
-    let args = Args::parse(); // Ensure `clap::Parser` trait is in scope
+#[derive(Parser, Debug)]
+struct GraphArgs {
+    // Add arguments for the graph command if needed
+}
 
+fn main() -> Result<()> {
+    let cli = Cli::parse();
+
+    match &cli.command {
+        Commands::Index(args) => run_index(args),
+        Commands::Graph(args) => run_graph(args),
+    }
+}
+
+fn run_index(args: &IndexArgs) -> Result<()> {
     // Maps previous block hash to next merkle root
     let header_map: HeaderMap = Default::default();
     // Maps txid to tx value
@@ -90,5 +114,11 @@ fn main() -> Result<()> {
         writeln!(file, "{}", line)?;
     }
 
+    Ok(())
+}
+
+fn run_graph(_args: &GraphArgs) -> Result<()> {
+    // TODO: Implement graph functionality
+    println!("Graph functionality not yet implemented");
     Ok(())
 }
