@@ -80,6 +80,25 @@ fn run_block_file_eval(args: &BlockFileEvalArgs) -> Result<()> {
 
     let size = process_block_file(&args.block_file_absolute_path, &pb, &result_map, &tx_map, &header_map);
     println!("process_block_file size = {}", size);
+
+    let mut file = OpenOptions::new()
+    .read(true)
+    .write(true)
+    .create(true)
+    .truncate(false)
+    .open(&args.output)?;
+
+    // When writing back to the file, ensure we start from the beginning
+    file.seek(std::io::SeekFrom::Start(0))?;
+    file.set_len(0)?; // Truncate the file
+
+    file.write_all(HEADER.as_bytes())?;
+    let mut out: Vec<String> = vec![];
+    // JA Bride:  TO_DO
+    for line in &out {
+        writeln!(file, "{}", line)?;
+    }
+
     Ok(())
 }
 
