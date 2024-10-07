@@ -32,13 +32,13 @@ enum Commands {
 
 #[derive(Parser, Debug)]
 struct BlockFileEvalArgs {
-        /// Bitcoin directory path
-        #[arg(short, long)]
-        block_file_absolute_path: PathBuf,
-    
-        /// CSV output file path
-        #[arg(short, long)]
-        output: PathBuf,
+    /// Bitcoin directory path
+    #[arg(short, long)]
+    block_file_absolute_path: PathBuf,
+
+    /// CSV output file path
+    #[arg(short, long)]
+    output: PathBuf,
 }
 
 #[derive(Parser, Debug)]
@@ -78,15 +78,21 @@ fn run_block_file_eval(args: &BlockFileEvalArgs) -> Result<()> {
     let result_map: ResultMap = Default::default();
     let pb = ProgressBar::new(1);
 
-    let size = process_block_file(&args.block_file_absolute_path, &pb, &result_map, &tx_map, &header_map);
+    let size = process_block_file(
+        &args.block_file_absolute_path,
+        &pb,
+        &result_map,
+        &tx_map,
+        &header_map,
+    );
     println!("process_block_file size = {}", size);
 
     let mut file = OpenOptions::new()
-    .read(true)
-    .write(true)
-    .create(true)
-    .truncate(false)
-    .open(&args.output)?;
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&args.output)?;
 
     // When writing back to the file, ensure we start from the beginning
     file.seek(std::io::SeekFrom::Start(0))?;
