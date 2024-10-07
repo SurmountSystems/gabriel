@@ -552,7 +552,7 @@ fn process_block(
 }
 
 /// Process a single block file (blkxxxxx.dat)
-fn process_block_file(
+pub fn process_block_file(
     path: &Path,
     pb: &ProgressBar,
     result_map: &ResultMap,

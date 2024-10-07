@@ -4,14 +4,15 @@ use std::{
     path::PathBuf,
 };
 
-use anyhow::Result;
-use block::{process_blocks_in_parallel, Record};
+use anyhow::{Ok, Result};
+use block::{process_block_file, process_blocks_in_parallel, Record};
 use clap::{Parser, Subcommand}; // Updated import
 
 mod block;
 mod tx;
 
 use block::{HeaderMap, ResultMap, TxMap};
+use indicatif::ProgressBar;
 
 const HEADER: &str = "Height,Date,Total P2PK addresses,Total P2PK coins\n";
 
@@ -24,8 +25,20 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
+    BlockFileEval(BlockFileEvalArgs),
     Index(IndexArgs),
     Graph(GraphArgs),
+}
+
+#[derive(Parser, Debug)]
+struct BlockFileEvalArgs {
+        /// Bitcoin directory path
+        #[arg(short, long)]
+        block_file_absolute_path: PathBuf,
+    
+        /// CSV output file path
+        #[arg(short, long)]
+        output: PathBuf,
 }
 
 #[derive(Parser, Debug)]
@@ -48,9 +61,26 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match &cli.command {
+        Commands::BlockFileEval(args) => run_block_file_eval(args),
         Commands::Index(args) => run_index(args),
         Commands::Graph(args) => run_graph(args),
     }
+}
+
+fn run_block_file_eval(args: &BlockFileEvalArgs) -> Result<()> {
+    // Maps previous block hash to next merkle root
+    let header_map: HeaderMap = Default::default();
+
+    // Maps txid to tx value
+    let tx_map: TxMap = Default::default();
+
+    // Maps header hash to result Record
+    let result_map: ResultMap = Default::default();
+    let pb = ProgressBar::new(1);
+
+    let size = process_block_file(&args.block_file_absolute_path, &pb, &result_map, &tx_map, &header_map);
+    println!("process_block_file size = {}", size);
+    Ok(())
 }
 
 fn run_index(args: &IndexArgs) -> Result<()> {
