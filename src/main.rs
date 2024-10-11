@@ -78,15 +78,23 @@ fn run_block_file_eval(args: &BlockFileEvalArgs) -> Result<()> {
     let result_map: ResultMap = Default::default();
     let pb = ProgressBar::new(1);
 
-    let size = process_block_file(
+    let blocks_processed = process_block_file(
         &args.block_file_absolute_path,
         &pb,
         &result_map,
         &tx_map,
         &header_map,
     );
-    println!("process_block_file size = {}", size);
+    println!(
+        "block_file_absolute_path: {} ;  blocks processed = {}",
+        &args.block_file_absolute_path.display(),
+        blocks_processed
+    );
+    if blocks_processed < 1 {
+        return Ok(());
+    }
 
+    // prep output file
     let mut file = OpenOptions::new()
         .read(true)
         .write(true)
@@ -97,12 +105,19 @@ fn run_block_file_eval(args: &BlockFileEvalArgs) -> Result<()> {
     // When writing back to the file, ensure we start from the beginning
     file.seek(std::io::SeekFrom::Start(0))?;
     file.set_len(0)?; // Truncate the file
-
     file.write_all(HEADER.as_bytes())?;
-    let mut out: Vec<String> = vec![];
-    // JA Bride:  TO_DO
-    for line in &out {
-        writeln!(file, "{}", line)?;
+
+    let result_map_read = result_map.read().unwrap();
+    for (_key, record) in result_map_read.iter() {
+        // write a record to the file
+        let mut p2pk_addresses = &record.p2pk_addresses_added;
+        let binding = p2pk_addresses - &record.p2pk_addresses_spent;
+        p2pk_addresses = &binding;
+        let mut p2pk_coins = record.p2pk_sats_added.to_owned() as f64 / 100_000_000.0;
+        p2pk_coins -= record.p2pk_sats_spent.to_owned() as f64 / 100_000_000.0;
+        let date = &record.date;
+        let output_line = format!("0,{date},{p2pk_addresses},{p2pk_coins}");
+        writeln!(file, "{}", output_line)?;
     }
 
     Ok(())

@@ -20,6 +20,8 @@ The best way to install Rust is to use [rustup](https://rustup.rs).
 
 ##### bitcoind
 
+If on bitcoind v28.0, ensure the following flag is set prior to initial block download:  `-blocksxor=0`
+
 #### Environment Variables
 
 ### Clone code
@@ -50,11 +52,11 @@ $ cargo test
 
 * execute indexer on a specific bitcoin block data file :
 
-        $ BITCOIND_DATA_DIR=/path/to/bitcoind/data/dir
-        $ BITCOIND_BLOCK_DATA_FILE=xxx.dat
+        $ export BITCOIND_DATA_DIR=/path/to/bitcoind/data/dir
+        $ export BITCOIND_BLOCK_DATA_FILE=xxx.dat
 
         $ ./target/debug/gabriel block-file-eval \
-            -b $BITCOIND_DATA_DIR/$BITCOIND_BLOCK_DATA_FILE \
+            -b $BITCOIND_DATA_DIR/blocks/$BITCOIND_BLOCK_DATA_FILE \
             -o /tmp/$BITCOIND_BLOCK_DATA_FILE.csv
 
 
