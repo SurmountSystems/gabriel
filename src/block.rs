@@ -19,8 +19,6 @@ use nom::{
 use rayon::prelude::*;
 use sha2::{Digest, Sha256};
 
-const MAGIC_NUMBER: u32 = 0xD9B4BEF9; // Bitcoin Mainnet magic number
-
 use crate::tx::{Transaction, TransactionInput, TransactionOutput, WitnessItem};
 
 #[derive(Debug)]
@@ -404,13 +402,7 @@ fn parse_block(input: &[u8]) -> IResult<&[u8], BitcoinBlock> {
 
 /// Parses a single block, including the magic number and block size
 fn parse_block_with_magic(input: &[u8]) -> IResult<&[u8], BitcoinBlock> {
-    let (input, magic) = le_u32(input)?;
-    if magic != MAGIC_NUMBER {
-        return Err(nom::Err::Error(nom::error::Error::new(
-            input,
-            nom::error::ErrorKind::Tag,
-        )));
-    }
+    let (input, _magic) = le_u32(input)?;
 
     let (input, block_size) = parse_block_size(input)?;
     let block_size = block_size as usize;
